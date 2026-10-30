@@ -1,0 +1,24 @@
+{
+  "warning": "PUBLIC TEST VECTOR: NEVER FUND THIS WALLET",
+  "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon clean",
+  "entropy": "241185641a9a0247fead7132a1f9903622fca14184beec40dc75cf33b6067155f294ad70823db6a4dc23953c689e397160aaf0111a4993ba48afb4949c0f238a",
+  "seed": "479fcd812d29c0a2b5787459423f50e08578eb2f77f5009713241a600274a79f38c7b2829b844582720c65755ac72fad865f24c29642442c143e53b85c88a87d",
+  "address": "UQCWOnDcjAzqnIC6RWKtxwB3-2_sno2Su1oAWlhihDQQ5PcK",
+  "code_hash": "20834b7b72b112147e1b2fb457b84e74d1a30f04f737d4f62a668e9552d2b72f",
+  "code_depth": 6,
+  "sdk": "@ton/ton 16.0.0 / @ton/crypto 3.3.0",
+  "public_key_cases": [
+    {
+      "public_key": "0000000000000000000000000000000000000000000000000000000000000000",
+      "address": "UQDg6S-r4rdNU-PuvgSGv1SIfyEtP3m4hFkzR7g0t3ayCnIt"
+    },
+    {
+      "public_key": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "address": "UQDJv8iJLM-5z5tK0DUiMTu9vL13s9EFdp69PEOFTNchihzw"
+    },
+    {
+      "public_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "address": "UQBt_hZajycJX3IG_qdb0i6JBEHcSGSTmHwieP_SxiCBjJ_5"
+    }
+  ]
+}
