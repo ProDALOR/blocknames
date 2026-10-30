@@ -52,6 +52,10 @@ pub fn summary(report: &Report<'_>) {
         ("Device", report.device.to_owned()),
         ("Recovery mode", report.mnemonic_scheme.to_owned()),
         ("Backend", format!("{:?}", report.backend)),
+        (
+            "Backend selection",
+            format!("{:?}", report.requested_backend),
+        ),
         ("Address engine", report.address_engine.to_owned()),
         ("Batch size", count(report.batch_size as u64)),
         ("CPU threads", report.cpu_threads.to_string()),
@@ -74,6 +78,12 @@ pub fn summary(report: &Report<'_>) {
                 .into(),
         ),
     ];
+    if let Some(path) = &report.cuda_runtime_library {
+        rows.push(("CUDA runtime", path.display().to_string()));
+    }
+    if let Some(reason) = &report.cuda_fallback_reason {
+        rows.push(("CUDA fallback", reason.replace(['\r', '\n'], " ")));
+    }
     if let Some(suffix) = report.requested_suffix {
         rows.push(("Requested suffix", suffix.into()));
     }

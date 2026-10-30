@@ -18,6 +18,18 @@ launcher, Node.js, Python, or `nvcc` is needed to run it.
 | `src/addresses.cu` | Fixed-base Ed25519, W5 hashing, CRC and suffix kernels |
 | `src/prefetch.rs` | Bounded one-batch CPU lookahead and worker cleanup |
 
+## Backend selection
+
+`--backend auto` discovers the runtime before CPU worker threads start, then tries
+initializing the requested CUDA device and kernels. If unavailable, it selects CPU
+with CPU batch/pipeline defaults and records the reason. Explicit `--backend cuda`
+remains strict; `--backend cpu` never initializes CUDA. Explicit invalid runtime
+paths and GPU correctness self-test failures always fail rather than falling back.
+
+Discovery searches application-local libraries, CUDA environment variables, standard
+CUDA 13 installations in numeric version order, the user-local runtime directory,
+and loader search paths. The report records the detected library and actual backend.
+
 ## Recovery schemes
 
 - `ton24`: independent random words, legacy TON mnemonic validation and full

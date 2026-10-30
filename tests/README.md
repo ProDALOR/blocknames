@@ -10,7 +10,8 @@ recovery words as a real wallet backup.
   `m/44'/607'/0'`, W5 address, and a dual-valid BIP39/TON phrase. Produced using
   `bip39 3.1.0` plus the same TON SDK versions, with an empty BIP39 passphrase.
 - `cli.rs`: process-level restoration, corruption/path rejection, overwrite
-  protection, JSON/table output, and pipeline shutdown checks.
+  protection, JSON/table output, CPU fallback with an unavailable CUDA device,
+  strict explicit CUDA selection, and pipeline shutdown checks.
 
 `cargo test --locked` runs without CUDA or Node.js. `blocknames self-test` adds
 live GPU comparisons against RustCrypto/dalek, including both complete recovery

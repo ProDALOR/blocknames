@@ -1,17 +1,23 @@
 name: Windows release
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to build, for example v0.1.0
+        description: Existing version tag to build, for example v0.1.1
         required: true
         type: string
 permissions:
   contents: read
 jobs:
   windows:
+    # A version bump is published only by an explicit "Release vX.Y.Z" commit.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      startsWith(github.event.head_commit.message, 'Release v')
     runs-on: windows-latest
     permissions:
       contents: write
@@ -19,20 +25,38 @@ jobs:
       run:
         shell: pwsh
     env:
-      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+      RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag || github.sha }}
           persist-credentials: false
       - name: Install stable Rust tools
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
-      - name: Check tag matches Cargo version
+      - name: Resolve and validate release version
         run: |
-          $metadata = cargo +stable metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $metadata = cargo +stable metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $version = $metadata.packages[0].version
+          if (-not $env:RELEASE_TAG) {
+            $env:RELEASE_TAG = "v$version"
+            if ($env:RELEASE_COMMIT_MESSAGE.Split("`n")[0].Trim() -ne "Release v$version") {
+              throw 'Release commit title must exactly match the Cargo version'
+            }
+            "RELEASE_TAG=$env:RELEASE_TAG" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
           if ($env:RELEASE_TAG -ne "v$version") { throw 'Release tag must match Cargo.toml version' }
+          $tagRefs = @(git ls-remote origin "refs/tags/$env:RELEASE_TAG" "refs/tags/$env:RELEASE_TAG^{}")
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($tagRefs.Count -gt 0) {
+            $peeled = @($tagRefs | Where-Object { $_.EndsWith('^{}') })
+            $target = if ($peeled.Count -gt 0) { $peeled[0] } else { $tagRefs[0] }
+            $head = git rev-parse HEAD
+            if (($target -split '\s+')[0] -ne $head) { throw 'Existing release tag points to a different commit' }
+          } elseif ($env:GITHUB_REF -ne 'refs/heads/main') {
+            throw 'Tag or manual releases require an existing tag'
+          }
       - run: cargo +stable fmt --check
       - run: cargo +stable clippy --locked --all-targets -- -D warnings
       - run: cargo +stable test --locked --release
@@ -64,4 +88,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           $assets = @(Get-ChildItem dist -File | ForEach-Object FullName)
-          gh release create $env:RELEASE_TAG @assets --verify-tag --title "blocknames $env:RELEASE_TAG" --generate-notes
+          $options = @('--target', $env:GITHUB_SHA, '--title', "blocknames $env:RELEASE_TAG")
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -or $env:GITHUB_REF.StartsWith('refs/tags/')) {
+            $options += '--verify-tag'
+          }
+          $notes = "docs/releases/$env:RELEASE_TAG.md"
+          if (Test-Path -LiteralPath $notes) { $options += @('--notes-file', $notes) }
+          else { $options += '--generate-notes' }
+          gh release create $env:RELEASE_TAG @assets @options

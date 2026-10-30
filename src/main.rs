@@ -55,6 +55,8 @@ enum OutputFormat {
 
 struct DisplayOptions {
     started: Instant,
+    cuda_setup_error: Option<String>,
+    cuda_runtime_library: Option<PathBuf>,
     format: OutputFormat,
     quiet: bool,
     progress_interval: u64,
@@ -103,8 +105,25 @@ enum Command {
 #[derive(Clone, Copy, Debug, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 enum Backend {
+    Auto,
     Cpu,
     Cuda,
+}
+
+impl Backend {
+    fn initialize<T>(
+        self,
+        cuda: impl FnOnce() -> Result<T>,
+    ) -> Result<(Option<T>, Option<String>)> {
+        match self {
+            Self::Cpu => Ok((None, None)),
+            Self::Cuda => Ok((Some(cuda()?), None)),
+            Self::Auto => match cuda() {
+                Ok(gpu) => Ok((Some(gpu), None)),
+                Err(error) => Ok((None, Some(format!("{error:#}")))),
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -168,7 +187,8 @@ struct EngineArgs {
     /// Prepare the next phrase batch during GPU work. Auto enables this for CUDA.
     #[arg(long, value_enum, default_value_t = Pipeline::Auto)]
     pipeline: Pipeline,
-    #[arg(long, value_enum, default_value_t = Backend::Cuda)]
+    /// Auto selects CUDA when its runtime and device initialize, otherwise CPU.
+    #[arg(long, value_enum, default_value_t = Backend::Auto)]
     backend: Backend,
     #[arg(long, default_value_t = 0)]
     device: usize,
@@ -226,6 +246,9 @@ struct Stats {
 
 #[derive(Serialize)]
 struct Report<'a> {
+    requested_backend: Backend,
+    cuda_fallback_reason: Option<String>,
+    cuda_runtime_library: Option<PathBuf>,
     cpu_threads: usize,
     requested_suffix: Option<&'a str>,
     expected_match_seconds: Option<f64>,
@@ -594,9 +617,16 @@ fn run(
     }
     // Include runtime discovery and worker-pool setup performed by main, too.
     let setup_start = display.started;
-    let gpu = match engine.backend {
-        Backend::Cuda => Some(gpu::Gpu::new(engine.device)?),
-        Backend::Cpu => None,
+    let (gpu, cuda_fallback_reason) = engine.backend.initialize(|| {
+        if let Some(reason) = &display.cuda_setup_error {
+            bail!("{reason}");
+        }
+        gpu::Gpu::new(engine.device)
+    })?;
+    let backend = if gpu.is_some() {
+        Backend::Cuda
+    } else {
+        Backend::Cpu
     };
     let resident = matches!(engine.gpu_memory, GpuMemory::Resident);
     let gpu_addresses = match engine.address_engine {
@@ -628,36 +658,28 @@ fn run(
         );
     }
     let device = gpu.as_ref().map_or("CPU / Rayon", |g| g.name.as_str());
-    let n = engine.batch_size.unwrap_or(match engine.backend {
-        Backend::Cpu => {
-            if engine.mode == MnemonicMode::Bip3912 {
-                512
-            } else {
-                4096
-            }
-        }
-        Backend::Cuda => {
-            if engine.mode == MnemonicMode::Bip3912 {
-                131072
-            } else {
-                4194304
-            }
-        }
-    }) as usize;
+    let n = engine
+        .batch_size
+        .unwrap_or(match (gpu.is_some(), engine.mode) {
+            (false, MnemonicMode::Bip3912) => 512,
+            (false, MnemonicMode::Ton24) => 4096,
+            (true, MnemonicMode::Bip3912) => 131072,
+            (true, MnemonicMode::Ton24) => 4194304,
+        }) as usize;
     ensure!(
         engine.mode != MnemonicMode::Bip3912 || n <= 262144,
         "12-word mode supports batches up to 262144"
     );
     let pipeline = match engine.pipeline {
-        Pipeline::Auto => matches!(engine.backend, Backend::Cuda),
+        Pipeline::Auto => gpu.is_some(),
         Pipeline::On => true,
         Pipeline::Off => false,
     };
     if !display.quiet {
-        eprintln!(
-            "Backend: {:?}; device: {device}; raw batch: {n}; pipeline: {pipeline}",
-            engine.backend
-        );
+        if let Some(reason) = &cuda_fallback_reason {
+            eprintln!("CUDA unavailable; using CPU: {reason}");
+        }
+        eprintln!("Backend: {backend:?}; device: {device}; raw batch: {n}; pipeline: {pipeline}");
     }
     if let Some(g) = &gpu {
         if !display.quiet {
@@ -738,6 +760,9 @@ fn run(
     let elapsed = start.elapsed().as_secs_f64();
     let rate = stats.valid_wallets as f64 / elapsed;
     let report = Report {
+        requested_backend: engine.backend,
+        cuda_fallback_reason,
+        cuda_runtime_library: display.cuda_runtime_library,
         cpu_threads: rayon::current_num_threads(),
         requested_suffix: suffix.as_deref(),
         expected_match_seconds: suffix
@@ -751,7 +776,7 @@ fn run(
         address_engine: if gpu_addresses { "cuda" } else { "cpu" },
         mnemonic_scheme: engine.mode.name(),
         derivation_path: (engine.mode == MnemonicMode::Bip3912).then_some(bip39_ton::PATH),
-        backend: engine.backend,
+        backend,
         device,
         batch_size: n,
         pipeline,
@@ -793,14 +818,20 @@ fn main() -> Result<()> {
     let needs_cuda = match &cli.command {
         Command::SelfTest { .. } => true,
         Command::Bench { engine, .. } | Command::Search { engine, .. } => {
-            matches!(engine.backend, Backend::Cuda)
+            !matches!(engine.backend, Backend::Cpu)
         }
         Command::Verify { .. } => false,
     };
-    let _cuda = if needs_cuda {
-        Some(runtime::configure(cli.cuda_path.as_deref())?)
+    let auto = matches!(&cli.command, Command::Bench { engine, .. } | Command::Search { engine, .. }
+        if matches!(engine.backend, Backend::Auto));
+    let (_cuda, cuda_setup_error) = if needs_cuda {
+        match runtime::configure(cli.cuda_path.as_deref()) {
+            Ok(runtime) => (Some(runtime), None),
+            Err(error) if auto && cli.cuda_path.is_none() => (None, Some(format!("{error:#}"))),
+            Err(error) => return Err(error),
+        }
     } else {
-        None
+        (None, None)
     };
     if let Some(threads) = cli.threads {
         rayon::ThreadPoolBuilder::new()
@@ -809,6 +840,8 @@ fn main() -> Result<()> {
             .context("configuring CPU worker pool")?;
     }
     let display = DisplayOptions {
+        cuda_runtime_library: _cuda.as_ref().and_then(|r| r.library.clone()),
+        cuda_setup_error,
         started,
         format: cli.format,
         quiet: cli.quiet,
@@ -845,6 +878,21 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod pipeline_tests {
     use super::*;
+
+    #[test]
+    fn backend_auto_falls_back_but_explicit_cuda_propagates_failure() {
+        let (gpu, reason) = Backend::Auto.initialize::<()>(|| bail!("no GPU")).unwrap();
+        assert!(gpu.is_none());
+        assert_eq!(reason.as_deref(), Some("no GPU"));
+        assert!(Backend::Cuda.initialize::<()>(|| bail!("no GPU")).is_err());
+        let (gpu, reason) = Backend::Cpu
+            .initialize::<()>(|| panic!("CPU must not initialize CUDA"))
+            .unwrap();
+        assert!(gpu.is_none() && reason.is_none());
+        let (gpu, reason) = Backend::Auto.initialize(|| Ok(42)).unwrap();
+        assert_eq!(gpu, Some(42));
+        assert!(reason.is_none());
+    }
 
     #[test]
     fn rejects_dual_valid_bip39_ton_winner_before_export() {

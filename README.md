@@ -14,6 +14,11 @@ No launcher scripts, Node.js, Python, or `nvcc` are required.
 .\blocknames.exe bench --mode bip39-12 --seconds 30
 ```
 
+The default `--backend auto` detects an NVIDIA GPU and usable CUDA runtime, then
+uses CUDA. If initialization fails, it selects CPU and reports the reason in the
+console table and JSON metrics. `--backend cuda` requires CUDA and fails if unavailable.
+GPU correctness self-test failures always stop execution.
+
 CUDA requires an NVIDIA driver and CUDA 13 NVRTC plus its matching builtins library.
 Install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads), place those
 libraries beside the executable, or point to their directory:
@@ -22,8 +27,12 @@ libraries beside the executable, or point to their directory:
 .\blocknames.exe search --mode bip39-12 --suffix _ai --cuda-path "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0"
 ```
 
-The CLI also checks `CUDA_PATH` and its user-local `blocknames/cuda` directory.
-NVIDIA libraries are not bundled in releases. CPU mode needs no CUDA installation:
+Runtime discovery checks the executable directory, its `cuda` subdirectory,
+`CUDA_PATH`, `CUDA_HOME`, version-specific `CUDA_PATH_V13_*` variables, standard
+CUDA 13 toolkit installations (newest first), the user-local `blocknames/cuda`
+directory, and library search paths. `--cuda-path` overrides automatic discovery;
+an invalid explicit path is an error. NVIDIA libraries are not bundled in releases.
+CPU mode needs no CUDA installation:
 
 ```powershell
 .\blocknames.exe search --backend cpu --mode bip39-12 --suffix _ai
@@ -61,7 +70,7 @@ blocknames search --help
 | Option | Purpose |
 | --- | --- |
 | `--mode ton24\|bip39-12` | Recovery scheme; default `ton24` |
-| `--backend cuda\|cpu` | Compute backend; default `cuda` |
+| `--backend auto\|cuda\|cpu` | Default `auto`: CUDA when available, otherwise CPU |
 | `--device N` | CUDA device index; default `0` |
 | `--cuda-path DIR` | CUDA toolkit root or NVRTC library directory |
 | `--threads N` | CPU worker count; default available logical processors |
@@ -96,7 +105,8 @@ blocknames bench --mode bip39-12 --seconds 30 --quiet --format json
 blocknames search --mode bip39-12 --suffix _ai --quiet --format json
 ```
 
-JSON includes scheme/path, backend, device, batch, setup/search times, throughput,
+JSON includes requested/selected backend, detected CUDA runtime, fallback reason,
+scheme/path, device, batch, setup/search times, throughput,
 workspace bytes, phase counters, and a public address/file path when found. Average
 search estimates exclude startup and batch rounding and are not guarantees.
 
@@ -136,10 +146,13 @@ CPU tests and CI need no GPU. `self-test` adds live CUDA comparisons against
 RustCrypto/dalek and independent SDK-derived fixtures. All fixture wallets are public
 and must never be funded. See [test provenance](tests/README.md).
 
-CI checks Windows and Linux. Pushing a version tag matching `Cargo.toml`, such as
-`v0.1.0`, builds and publishes a Windows `.exe`, documentation ZIP and `SHA256SUMS`.
-The release workflow can also be dispatched for an existing tag. No application
-launcher or build scripts are needed; GitHub Actions invokes Cargo directly.
+CI checks Windows and Linux. To publish, update `Cargo.toml` and `Cargo.lock` and
+push a commit titled exactly `Release vX.Y.Z` to `main`, matching the Cargo version.
+After checks, Actions creates the tag on that commit and publishes a Windows `.exe`,
+documentation ZIP and `SHA256SUMS`. Ordinary commits do not publish releases.
+Alternatively, push a matching version tag such as `v0.1.1`, or dispatch the release
+workflow for an existing tag. Optional notes live in `docs/releases/vX.Y.Z.md`.
+No application launcher or build scripts are needed; Actions invokes Cargo directly.
 
 See [architecture](docs/ARCHITECTURE.md) and [reference benchmarks](docs/BENCHMARKS.md).
 Local downloads, scripts, JS verification tools, raw logs and generated binaries are

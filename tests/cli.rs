@@ -5,6 +5,59 @@ use std::{
 };
 
 #[test]
+fn auto_backend_uses_cpu_defaults_when_cuda_device_is_unavailable() {
+    let result = Command::new(env!("CARGO_BIN_EXE_blocknames"))
+        .args([
+            "bench",
+            "--device",
+            "2147483647",
+            "--mode",
+            "bip39-12",
+            "--seconds",
+            "1",
+            "--threads",
+            "2",
+            "--quiet",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(report["requested_backend"], "auto");
+    assert_eq!(report["backend"], "cpu");
+    assert_eq!(report["batch_size"], 512);
+    assert_eq!(report["pipeline"], false);
+    assert_eq!(report["gpu_cpu_self_test"], false);
+    assert!(
+        report["cuda_fallback_reason"]
+            .as_str()
+            .is_some_and(|reason| !reason.is_empty())
+    );
+    assert!(report["stats"]["valid_wallets"].as_u64().unwrap() > 0);
+
+    let forced = Command::new(env!("CARGO_BIN_EXE_blocknames"))
+        .args([
+            "bench",
+            "--backend",
+            "cuda",
+            "--device",
+            "2147483647",
+            "--seconds",
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert!(!forced.status.success());
+    assert!(forced.stdout.is_empty());
+}
+
+#[test]
 fn twelve_word_wallet_restores_and_wrong_path_is_rejected() {
     let fixtures: serde_json::Value =
         serde_json::from_str(include_str!("bip39-fixture.json")).unwrap();
