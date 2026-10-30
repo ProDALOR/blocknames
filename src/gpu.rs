@@ -212,8 +212,11 @@ impl Gpu {
         let module = ctx.load_module(ptx)?;
         let stream = ctx.default_stream();
         let base_table: Vec<u16> = include_bytes!("ed25519-base.bin")
-            .chunks_exact(2)
-            .map(|b| u16::from_le_bytes([b[0], b[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .copied()
+            .map(u16::from_le_bytes)
             .collect();
         let mut dictionary = Vec::with_capacity(2048 * 9);
         for word in bip39::Language::English.word_list() {
@@ -476,10 +479,7 @@ impl Gpu {
                 } else {
                     let bytes =
                         Zeroizing::new(self.stream.clone_dtoh(&work.output.slice(..passing * 64))?);
-                    *seeds = bytes
-                        .chunks_exact(64)
-                        .map(|c| c.try_into().unwrap())
-                        .collect();
+                    *seeds = bytes.as_chunks::<64>().0.to_vec();
                     indexes = if bip39 {
                         (0..passing).collect()
                     } else {
@@ -574,10 +574,7 @@ impl Gpu {
         self.stream.memset_zeros(&mut state)?;
         self.stream.memset_zeros(&mut output)?;
         self.stream.synchronize()?;
-        Ok(bytes
-            .chunks_exact(64)
-            .map(|c| c.try_into().unwrap())
-            .collect())
+        Ok(bytes.as_chunks::<64>().0.to_vec())
     }
 
     pub fn validate(&self, keys: &[[u8; 64]]) -> Result<Vec<usize>> {
@@ -712,7 +709,13 @@ impl Gpu {
             .stream
             .clone_dtoh(&work.addresses.slice(..seeds.len() * 36))?;
         let expected: Vec<_> = seeds.iter().map(ton::friendly).collect();
-        for (i, (a, b)) in raw.chunks_exact(36).zip(expected.iter()).enumerate() {
+        for (i, (a, b)) in raw
+            .as_chunks::<36>()
+            .0
+            .iter()
+            .zip(expected.iter())
+            .enumerate()
+        {
             ensure!(a == b, "CUDA Ed25519/W5/CRC mismatch at public vector {i}");
         }
         let encoded = ton::encode_address(&expected[0]);

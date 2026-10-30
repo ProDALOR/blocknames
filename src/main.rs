@@ -279,8 +279,8 @@ fn generate(n: usize) -> Zeroizing<Vec<[u16; 24]>> {
             .par_chunks_exact(48)
             .map(|bytes| {
                 let mut indexes = [0u16; 24];
-                for (i, b) in bytes.chunks_exact(2).enumerate() {
-                    indexes[i] = u16::from_le_bytes([b[0], b[1]]) & 2047;
+                for (i, b) in bytes.as_chunks::<2>().0.iter().enumerate() {
+                    indexes[i] = u16::from_le_bytes(*b) & 2047;
                 }
                 indexes
             })
