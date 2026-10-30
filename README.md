@@ -6,7 +6,10 @@ Keys are generated locally; the app never sends recovery material to a service.
 
 ## Quick start
 
-Download the Windows executable or ZIP from [Releases](https://github.com/ProDALOR/blocknames/releases).
+Download and extract the Windows ZIP from [Releases](https://github.com/ProDALOR/blocknames/releases).
+It includes `blocknames.exe`, a `cuda` folder with the matching NVRTC DLLs, and the
+NVIDIA license. Keep that folder beside the executable. With a compatible NVIDIA
+GPU and installed driver, CUDA works without installing the toolkit or setting PATH.
 No launcher scripts, Node.js, Python, or `nvcc` are required.
 
 ```powershell
@@ -19,9 +22,10 @@ uses CUDA. If initialization fails, it selects CPU and reports the reason in the
 console table and JSON metrics. `--backend cuda` requires CUDA and fails if unavailable.
 GPU correctness self-test failures always stop execution.
 
-CUDA requires an NVIDIA driver and CUDA 13 NVRTC plus its matching builtins library.
-Install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads), place those
-libraries beside the executable, or point to their directory:
+The separate `.exe` download is smaller and requires an existing CUDA 13 NVRTC
+installation for GPU use. Source builds have the same runtime requirement. Install
+the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads), copy the ZIP's `cuda`
+folder beside your executable, or point to your runtime directory:
 
 ```powershell
 .\blocknames.exe search --mode bip39-12 --suffix _ai --cuda-path "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0"
@@ -31,7 +35,7 @@ Runtime discovery checks the executable directory, its `cuda` subdirectory,
 `CUDA_PATH`, `CUDA_HOME`, version-specific `CUDA_PATH_V13_*` variables, standard
 CUDA 13 toolkit installations (newest first), the user-local `blocknames/cuda`
 directory, and library search paths. `--cuda-path` overrides automatic discovery;
-an invalid explicit path is an error. NVIDIA libraries are not bundled in releases.
+an invalid explicit path is an error. The NVIDIA driver itself is not bundled.
 CPU mode needs no CUDA installation:
 
 ```powershell
@@ -94,9 +98,15 @@ resident memory and CUDA phrase construction; CPU mode is also supported.
 
 ## Console metrics
 
-Progress rows show elapsed search time, valid wallets, throughput, raw phrases and
-VRAM. The final table also shows configuration, CPU threads, startup time, kernel
+Progress rows use `tabled` to show elapsed search time, valid wallets, throughput,
+raw phrases, VRAM and a live **Mean wait** estimate. Durations use `humantime`, such
+as `11h 30m`. The final table also shows configuration, CPU threads, startup time, kernel
 cache status, target suffix, and the result path. Recovery words are never printed.
+
+Mean wait is `64^suffix_length / wallets_per_second`, recalculated from measured
+throughput. It is a statistical average, not a countdown or a deadline: previous
+misses do not shorten the expected wait. A six-character suffix averages about
+12 hours at 1.6 million wallets/s. Benchmarks have no target and show `-` in this column.
 
 For automation, stdout can be a single JSON object; progress stays on stderr:
 
@@ -149,8 +159,9 @@ and must never be funded. See [test provenance](tests/README.md).
 CI checks Windows and Linux. To publish, update `Cargo.toml` and `Cargo.lock` and
 push a commit titled exactly `Release vX.Y.Z` to `main`, matching the Cargo version.
 After checks, Actions creates the tag on that commit and publishes a Windows `.exe`,
-documentation ZIP and `SHA256SUMS`. Ordinary commits do not publish releases.
-Alternatively, push a matching version tag such as `v0.1.1`, or dispatch the release
+CUDA-ready ZIP and `SHA256SUMS`. The ZIP bundles pinned, checksum-verified NVRTC
+libraries from NVIDIA's official archive and its license. Ordinary commits do not publish releases.
+Alternatively, push a matching version tag such as `v0.1.2`, or dispatch the release
 workflow for an existing tag. Optional notes live in `docs/releases/vX.Y.Z.md`.
 No application launcher or build scripts are needed; Actions invokes Cargo directly.
 
@@ -162,5 +173,6 @@ fixtures and documentation are published.
 ## License
 
 MIT. Public-domain TweetNaCl-derived field operations are documented in
-[THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). NVIDIA runtime libraries are separate
-components subject to NVIDIA's terms.
+[THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Bundled NVIDIA runtime libraries remain
+subject to NVIDIA's terms in `cuda/LICENSE.NVIDIA.txt`; the project's MIT license
+does not apply to those libraries. See [CUDA bundle provenance](docs/CUDA_BUNDLE.md).

@@ -1,6 +1,6 @@
 [package]
 name = "blocknames"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.88"
 description = "A local TON vanity wallet CLI with CPU and CUDA backends"
@@ -30,6 +30,8 @@ sha2 = "0.10"
 zeroize = { version = "1", features = ["derive"] }
 ctrlc = "3"
 libloading = "0.9"
+tabled = { version = "0.22", default-features = false, features = ["std"] }
+humantime = "2.4.0"
 
 [build-dependencies]
 num-bigint = "0.4"

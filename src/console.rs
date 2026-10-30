@@ -1,5 +1,34 @@
 //! Plain ASCII tables: readable in Windows terminals and safe in redirected logs.
-use crate::{Report, Stats};
+use crate::{Report, Stats, estimate};
+use tabled::{
+    Table,
+    builder::Builder,
+    settings::{Alignment, Style, Width, object::Columns},
+};
+
+const PROGRESS_LABELS: [&str; 6] = [
+    "Elapsed",
+    "Valid wallets",
+    "Wallets/s",
+    "Raw phrases",
+    "VRAM",
+    "Mean wait",
+];
+
+fn progress_table(record: [String; 6]) -> Table {
+    let mut table = Builder::from_iter([record]).build();
+    table.with(Style::ascii()).with(Alignment::right());
+    // Fixed column sizes let progress append one row at a time in redirected
+    // logs as well as interactive terminals. tabled owns padding and borders.
+    for (column, width) in [14, 16, 14, 16, 11, 24].into_iter().enumerate() {
+        table.modify(
+            Columns::new(column..=column),
+            Width::truncate(width).suffix("..."),
+        );
+        table.modify(Columns::new(column..=column), Width::increase(width));
+    }
+    table
+}
 
 fn count(n: u64) -> String {
     let text = n.to_string();
@@ -19,32 +48,47 @@ fn bytes(n: Option<usize>) -> String {
     )
 }
 
-pub fn progress_header() {
-    eprintln!(
-        "+------------+------------------+----------------+------------------+-------------+"
-    );
-    eprintln!(
-        "|    Elapsed |    Valid wallets |      Wallets/s |      Raw phrases |        VRAM |"
-    );
-    eprintln!(
-        "+------------+------------------+----------------+------------------+-------------+"
-    );
+pub fn progress_header(suffix: Option<&str>) {
+    if let Some(suffix) = suffix {
+        eprintln!(
+            "Target: {suffix} | Mean wait is a statistical estimate, not a countdown or deadline."
+        );
+    }
+    eprintln!("{}", progress_table(PROGRESS_LABELS.map(str::to_owned)));
 }
-pub fn progress(elapsed: f64, stats: &Stats, vram: Option<usize>) {
+pub fn progress(elapsed: f64, stats: &Stats, vram: Option<usize>, suffix: Option<&str>) {
     let rate = stats.valid_wallets as f64 / elapsed.max(f64::EPSILON);
-    eprintln!(
-        "| {:>9.2}s | {:>16} | {:>14} | {:>16} | {:>11} |",
-        elapsed,
+    let wait = estimate::mean_wait(suffix, rate).map_or_else(
+        || {
+            if suffix.is_some() {
+                "warming up".into()
+            } else {
+                "-".into()
+            }
+        },
+        estimate::duration,
+    );
+    let mut table = progress_table([
+        estimate::duration(elapsed),
         count(stats.valid_wallets),
         count(rate.round() as u64),
         count(stats.raw_phrases),
-        bytes(vram)
+        bytes(vram),
+        wait,
+    ]);
+    table.with(
+        Style::ascii()
+            .remove_top()
+            .remove_bottom()
+            .remove_horizontals(),
     );
+    eprintln!("{table}");
 }
 pub fn progress_footer() {
-    eprintln!(
-        "+------------+------------------+----------------+------------------+-------------+"
-    );
+    let table = progress_table(PROGRESS_LABELS.map(str::to_owned)).to_string();
+    if let Some(border) = table.lines().last() {
+        eprintln!("{border}");
+    }
 }
 
 pub fn summary(report: &Report<'_>) {
@@ -66,9 +110,9 @@ pub fn summary(report: &Report<'_>) {
             "Wallets / second",
             count(report.wallets_per_second.round() as u64),
         ),
-        ("Search time", format!("{:.3} s", report.elapsed_seconds)),
-        ("Startup + checks", format!("{:.3} s", report.setup_seconds)),
-        ("Total time", format!("{:.3} s", report.total_wall_seconds)),
+        ("Search time", estimate::duration(report.elapsed_seconds)),
+        ("Startup + checks", estimate::duration(report.setup_seconds)),
+        ("Total time", estimate::duration(report.total_wall_seconds)),
         ("VRAM workspace", bytes(report.vram_workspace_bytes)),
         (
             "Kernel cache",
@@ -90,7 +134,7 @@ pub fn summary(report: &Report<'_>) {
     if let Some(seconds) = report.expected_match_seconds {
         rows.push((
             "Mean search estimate",
-            format!("{seconds:.3} s (random; excludes startup)"),
+            format!("{} (random; excludes startup)", estimate::duration(seconds)),
         ));
     }
     if let Some(result) = &report.result {
@@ -100,16 +144,13 @@ pub fn summary(report: &Report<'_>) {
             result.wallet_file.display().to_string(),
         ));
     }
-    let width = rows
-        .iter()
-        .map(|(_, value)| value.len())
-        .max()
-        .unwrap_or(16)
-        .max(16);
-    let line = format!("+----------------------+{}+", "-".repeat(width + 2));
-    println!("{line}");
+    let mut builder = Builder::default();
     for (name, value) in rows {
-        println!("| {name:<20} | {value:<width$} |");
+        builder.push_record([name, &value]);
     }
-    println!("{line}");
+    let mut table = builder.build();
+    table
+        .with(Style::ascii().remove_horizontals().remove_horizontal())
+        .with(Alignment::left());
+    println!("{table}");
 }

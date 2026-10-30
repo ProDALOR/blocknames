@@ -10,6 +10,7 @@ launcher, Node.js, Python, or `nvcc` is needed to run it.
 | `build/ed25519_table.rs` | Deterministic Ed25519 table generation with BigUint arithmetic |
 | `src/main.rs` | CLI options, candidate batches, recovery checks, output files |
 | `src/console.rs` | Human-readable progress/summary tables |
+| `src/estimate.rs` | Statistical mean wait and humantime duration display |
 | `src/runtime.rs` | Optional runtime library discovery and platform data paths |
 | `src/bip39_ton.rs` | Independent CPU BIP39 / SLIP-0010 reference |
 | `src/ton.rs` | Legacy TON mnemonic KDF, W5 hashing, CRC and binary suffix checks |
@@ -29,6 +30,12 @@ paths and GPU correctness self-test failures always fail rather than falling bac
 Discovery searches application-local libraries, CUDA environment variables, standard
 CUDA 13 installations in numeric version order, the user-local runtime directory,
 and loader search paths. The report records the detected library and actual backend.
+
+Windows release ZIPs bundle a pinned NVRTC/builtins pair under `cuda`, with the
+complete NVIDIA license. CI verifies the archive digest and packaged runtime path.
+See [bundle provenance](CUDA_BUNDLE.md). Console tables use `tabled`; `humantime`
+formats durations. Live mean wait is derived from suffix length and valid-wallet
+throughput; numeric JSON seconds retain their existing format.
 
 ## Recovery schemes
 

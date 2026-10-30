@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to build, for example v0.1.1
+        description: Existing version tag to build, for example v0.1.2
         required: true
         type: string
 permissions:
@@ -62,6 +62,30 @@ jobs:
       - run: cargo +stable test --locked --release
       - run: cargo +stable run --locked --release --example generate_ed25519_table -- --check
       - run: cargo +stable build --locked --release
+      - name: Bundle pinned NVIDIA NVRTC runtime and license
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'nvrtc.zip'
+          if (-not (Test-Path -LiteralPath $archive)) {
+            Invoke-WebRequest -Uri 'https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvrtc/windows-x86_64/cuda_nvrtc-windows-x86_64-13.0.88-archive.zip' -OutFile $archive -TimeoutSec 180
+          }
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne '8c50a52467826167e0dbe99936140c52d62272bfc5849fe2d6587d050c8c5d29') {
+            throw 'NVIDIA NVRTC archive checksum mismatch'
+          }
+          New-Item -ItemType Directory -Force dist/stage/cuda | Out-Null
+          $zip = [IO.Compression.ZipFile]::OpenRead($archive)
+          try {
+            $root = 'cuda_nvrtc-windows-x86_64-13.0.88-archive'
+            $files = @{
+              "$root/bin/x64/nvrtc64_130_0.dll" = 'nvrtc64_130_0.dll'
+              "$root/bin/x64/nvrtc-builtins64_130.dll" = 'nvrtc-builtins64_130.dll'
+              "$root/LICENSE" = 'LICENSE.NVIDIA.txt'
+            }
+            foreach ($source in $files.Keys) {
+              $entry = $zip.GetEntry($source)
+              if ($null -eq $entry) { throw "NVIDIA archive entry missing: $source" }
+              [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $PWD "dist/stage/cuda/$($files[$source])"))
+            }
+          } finally { $zip.Dispose() }
       - name: Package executable and documentation
         run: |
           $name = "blocknames-$env:RELEASE_TAG-windows-x86_64"
@@ -74,6 +98,17 @@ jobs:
           $assets = @(Get-ChildItem dist -File)
           $checksums = foreach ($file in $assets) { "{0}  {1}" -f (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $file.Name }
           [IO.File]::WriteAllText((Join-Path $PWD 'dist/SHA256SUMS'), ($checksums -join "`n") + "`n")
+      - name: Verify packaged runtime loads without an external CUDA installation
+        run: |
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'blocknames-smoke-appdata'
+          $env:CUDA_PATH = $null
+          $env:CUDA_HOME = $null
+          $report = & ./dist/stage/blocknames.exe bench --mode bip39-12 --seconds 1 --batch-size 16 --threads 2 --quiet --format json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $expected = [IO.Path]::GetFullPath((Join-Path $PWD 'dist/stage/cuda/nvrtc64_130_0.dll'))
+          $actual = $report.cuda_runtime_library -replace '^\\\\\?\\', ''
+          if ($actual -ne $expected) { throw "Packaged NVRTC did not load: $actual" }
+          # Hosted runners need no NVIDIA GPU; CUDA discovery must still load our DLL.
       - name: Retain build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

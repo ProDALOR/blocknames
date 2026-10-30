@@ -1,5 +1,6 @@
 mod bip39_ton;
 mod console;
+mod estimate;
 mod gpu;
 mod prefetch;
 mod runtime;
@@ -703,7 +704,7 @@ fn run(
     let mut found = false;
     let mut result = None;
     if !display.quiet {
-        console::progress_header();
+        console::progress_header(suffix.as_deref());
     }
     let mut last_progress = Instant::now();
     loop {
@@ -742,6 +743,7 @@ fn run(
                 elapsed,
                 &stats,
                 gpu.as_ref().and_then(|g| g.workspace_bytes()),
+                suffix.as_deref(),
             );
             last_progress = Instant::now();
         }
@@ -765,10 +767,7 @@ fn run(
         cuda_runtime_library: display.cuda_runtime_library,
         cpu_threads: rayon::current_num_threads(),
         requested_suffix: suffix.as_deref(),
-        expected_match_seconds: suffix
-            .as_ref()
-            .filter(|_| rate > 0.0)
-            .map(|s| 64f64.powi(s.len() as i32) / rate),
+        expected_match_seconds: estimate::mean_wait(suffix.as_deref(), rate),
         result,
         setup_seconds,
         total_wall_seconds: setup_seconds + elapsed,

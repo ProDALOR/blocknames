@@ -5,6 +5,62 @@ use std::{
 };
 
 #[test]
+fn search_displays_live_mean_wait_and_reports_numeric_seconds() {
+    let dir = std::env::temp_dir().join(format!(
+        "blocknames-estimate-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir(&dir).unwrap();
+    let report_path = dir.join("metrics.json");
+    let output_path = dir.join("test.secret.json");
+    let result = Command::new(env!("CARGO_BIN_EXE_blocknames"))
+        .args([
+            "search",
+            "--backend",
+            "cpu",
+            "--mode",
+            "bip39-12",
+            "--suffix",
+            "_AHHET",
+            "--max-seconds",
+            "1",
+            "--batch-size",
+            "16",
+            "--threads",
+            "2",
+            "--report",
+        ])
+        .arg(&report_path)
+        .arg("--output")
+        .arg(&output_path)
+        .output()
+        .unwrap();
+    // Both an ordinary duration limit and a lucky early match are valid outcomes.
+    assert!(result.status.success() || result.status.code() == Some(1));
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("Mean wait") && stderr.contains("not a countdown"),
+        "{stderr}"
+    );
+    assert!(String::from_utf8_lossy(&result.stdout).contains("Mean search estimate"));
+    let report: serde_json::Value =
+        serde_json::from_slice(&fs::read(&report_path).unwrap()).unwrap();
+    let rate = report["wallets_per_second"].as_f64().unwrap();
+    let wait = report["expected_match_seconds"].as_f64().unwrap();
+    assert!(rate > 0.0 && wait > 0.0);
+    assert!((wait * rate / 64f64.powi(6) - 1.0).abs() < 1e-12);
+    fs::remove_file(report_path).unwrap();
+    if output_path.exists() {
+        fs::remove_file(output_path).unwrap();
+    }
+    fs::remove_dir(dir).unwrap();
+}
+
+#[test]
 fn auto_backend_uses_cpu_defaults_when_cuda_device_is_unavailable() {
     let result = Command::new(env!("CARGO_BIN_EXE_blocknames"))
         .args([
