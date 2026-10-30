@@ -6,6 +6,8 @@ launcher, Node.js, Python, or `nvcc` is needed to run it.
 
 | File | Responsibility |
 | --- | --- |
+| `build.rs` | Generate and checksum the public table in Cargo's `OUT_DIR` |
+| `build/ed25519_table.rs` | Deterministic Ed25519 table generation with BigUint arithmetic |
 | `src/main.rs` | CLI options, candidate batches, recovery checks, output files |
 | `src/console.rs` | Human-readable progress/summary tables |
 | `src/runtime.rs` | Optional runtime library discovery and platform data paths |
@@ -46,7 +48,14 @@ matching index/seed and a public benchmark checksum. CPU address mode remains an
 independent comparison path. The CPU producer holds at most one future batch and
 is joined on match, duration limit, Ctrl+C, or error.
 
-The public 96 KiB fixed-base table is reproducible independently:
+Cargo generates the public 96 KiB fixed-base table during the build using
+`build/ed25519_table.rs`. It checks the length and pinned SHA-256 of the original
+GPU-verified table, then `src/gpu.rs` embeds the output from `OUT_DIR`. The generator
+uses arbitrary-precision CPU arithmetic independent of CUDA field operations and
+needs no external programs or GPU. Cargo reruns it when its Rust sources change;
+incremental builds reuse the generated artifact. No table binary is tracked in Git.
+
+To regenerate it and check both the embedded build output and reference digest:
 
 ```text
 cargo run --locked --release --example generate_ed25519_table -- --check

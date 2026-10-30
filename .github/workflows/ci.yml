@@ -22,7 +22,7 @@ jobs:
       - run: cargo +stable fmt --check
       - run: cargo +stable clippy --locked --all-targets -- -D warnings
       - run: cargo +stable test --locked --release
-      - name: Verify the public Ed25519 table independently
+      - name: Verify the generated Ed25519 table against its reference digest
         run: cargo +stable run --locked --release --example generate_ed25519_table -- --check
       - run: cargo +stable build --locked --release
       - name: CPU CLI smoke test (no CUDA required)

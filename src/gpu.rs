@@ -211,7 +211,7 @@ impl Gpu {
         };
         let module = ctx.load_module(ptx)?;
         let stream = ctx.default_stream();
-        let base_table: Vec<u16> = include_bytes!("ed25519-base.bin")
+        let base_table: Vec<u16> = include_bytes!(concat!(env!("OUT_DIR"), "/ed25519-base.bin"))
             .as_chunks::<2>()
             .0
             .iter()

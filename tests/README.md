@@ -16,7 +16,9 @@ recovery words as a real wallet backup.
 live GPU comparisons against RustCrypto/dalek, including both complete recovery
 schemes, suffix matching, compaction, workspace reuse, and public-key generation.
 
-The public Ed25519 lookup table is independently reproducible in Rust:
+The build automatically generates the public Ed25519 lookup table and checks its
+SHA-256 against the original GPU-verified table. To regenerate it and verify the
+embedded output and reference digest without CUDA:
 
 ```text
 cargo run --locked --release --example generate_ed25519_table -- --check

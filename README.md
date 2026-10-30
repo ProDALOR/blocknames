@@ -33,6 +33,9 @@ NVIDIA libraries are not bundled in releases. CPU mode needs no CUDA installatio
 
 Requires Rust 1.88+ and a native Rust linker (MSVC Build Tools on Windows).
 CUDA headers and SDK libraries are not needed at build time: runtime loading is dynamic.
+Cargo automatically generates the public 96 KiB Ed25519 lookup table in `OUT_DIR`,
+checks its SHA-256 against the verified reference, and embeds it in the executable.
+The generated binary stays under `target/` and is never written into the source tree.
 
 ```text
 cargo build --locked --release
@@ -139,8 +142,9 @@ The release workflow can also be dispatched for an existing tag. No application
 launcher or build scripts are needed; GitHub Actions invokes Cargo directly.
 
 See [architecture](docs/ARCHITECTURE.md) and [reference benchmarks](docs/BENCHMARKS.md).
-Local downloads, scripts, JS verification tools, raw logs and binaries are ignored;
-only Rust sources, embedded CUDA, public fixtures and documentation are published.
+Local downloads, scripts, JS verification tools, raw logs and generated binaries are
+ignored; only Rust sources (including the table generator), embedded CUDA, public
+fixtures and documentation are published.
 
 ## License
 

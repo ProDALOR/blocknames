@@ -10,7 +10,7 @@ readme = "README.md"
 authors = ["ProDALOR"]
 keywords = ["ton", "vanity", "wallet", "cuda", "cli"]
 categories = ["command-line-utilities", "cryptography::cryptocurrencies"]
-include = ["/src/**", "/tests/**", "/examples/**", "/docs/**", "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE", "/THIRD_PARTY_NOTICES"]
+include = ["/src/**", "/build.rs", "/build/**", "/tests/**", "/examples/**", "/docs/**", "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE", "/THIRD_PARTY_NOTICES"]
 
 [dependencies]
 anyhow = "1"
@@ -30,6 +30,11 @@ sha2 = "0.10"
 zeroize = { version = "1", features = ["derive"] }
 ctrlc = "3"
 libloading = "0.9"
+
+[build-dependencies]
+num-bigint = "0.4"
+num-traits = "0.2"
+sha2 = "0.10"
 
 [dev-dependencies]
 num-bigint = "0.4"
